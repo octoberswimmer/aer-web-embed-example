@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Apex exercises with aer</title>
+	<meta name="description" content="A sample page that embeds the aer js/wasm runtime to check Apex exercises in the browser: anonymous Apex, a class, and a trigger checked by a test class.">
+	<style>
+		:root {
+			--ink: #1d2b2e;
+			--muted: #56686c;
+			--line: #c9d3d1;
+			--paper: #fbfaf7;
+			--code-bg: #13262a;
+			--code-ink: #e6eeec;
+			--pass: #1d7a4f;
+			--fail: #b3261e;
+			--accent: #0e6b6b;
+		}
+		* { box-sizing: border-box; }
+		body {
+			margin: 0;
+			background: var(--paper);
+			color: var(--ink);
+			font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+		}
+		main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+		h1 { font-size: 28px; margin: 0 0 4px; }
+		h2 { font-size: 20px; margin: 0 0 8px; }
+		p { margin: 0 0 12px; }
+		code, textarea, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+		a { color: var(--accent); }
+		.muted { color: var(--muted); }
+		.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 16px; }
+		.tabs button { border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 6px 12px; cursor: pointer; font: inherit; }
+		.tabs button[aria-selected="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+		.file { margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+		textarea {
+			display: block;
+			width: 100%;
+			min-height: 260px;
+			padding: 12px;
+			border: 1px solid var(--line);
+			background: var(--code-bg);
+			color: var(--code-ink);
+			tab-size: 4;
+			resize: vertical;
+		}
+		.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+		.controls button { border: 0; background: var(--accent); color: #fff; padding: 8px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+		.controls button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); font-weight: 400; }
+		.controls button:disabled { opacity: 0.5; cursor: default; }
+		#status { font-size: 14px; color: var(--muted); }
+		#verdict { font-weight: 700; margin: 16px 0 8px; }
+		#verdict.pass { color: var(--pass); }
+		#verdict.fail { color: var(--fail); }
+		#checks { list-style: none; margin: 0 0 12px; padding: 0; }
+		#checks li { border-top: 1px solid var(--line); padding: 6px 0; }
+		#checks li:last-child { border-bottom: 1px solid var(--line); }
+		#checks .pass { color: var(--pass); font-weight: 600; }
+		#checks .fail { color: var(--fail); font-weight: 600; }
+		pre#exerciseProvidedSource { margin: 0 0 8px; padding: 12px; background: #eef2f1; border: 1px solid var(--line); white-space: pre; overflow-x: auto; }
+		pre#output { margin: 0; padding: 12px; background: var(--code-bg); color: var(--code-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+		details#runtimeLog { margin-top: 16px; }
+		details#runtimeLog summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+		details#runtimeLog button { margin: 8px 0; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 2px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+		pre#runtimeLogText { margin: 0; padding: 12px; max-height: 320px; overflow: auto; background: #f1f4f3; border: 1px solid var(--line); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+		footer { margin-top: 32px; font-size: 14px; color: var(--muted); }
+	</style>
+</head>
+<body>
+<main>
+	<h1>Apex exercises in the browser</h1>
+	<p class="muted">A sample page that embeds <a href="https://aertest.com">aer</a>, the Apex Execution Runtime, compiled to WebAssembly. Your code runs in this browser tab against an empty in-memory org; nothing is sent to a server. View this page's source to see how it works: all of its JavaScript is in one script at the bottom, and it talks to the runtime through <a href="aer-worker.js">aer-worker.js</a>.</p>
+
+	<div class="tabs" id="exerciseTabs" role="tablist"></div>
+
+	<h2 id="exerciseTitle"></h2>
+	<div id="exerciseTask"></div>
+	<div id="exerciseProvided" hidden>
+		<div class="file" id="exerciseProvidedFile"></div>
+		<pre id="exerciseProvidedSource"></pre>
+	</div>
+	<div class="file" id="exerciseFile"></div>
+	<textarea id="codeInput" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Your Apex code"></textarea>
+
+	<div class="controls">
+		<button id="runBtn" type="button" disabled>Run</button>
+		<button id="resetBtn" type="button" class="secondary">Reset code</button>
+		<label><input type="checkbox" id="allExceptions"> Log caught exceptions</label>
+		<span id="status">Loading the runtime…</span>
+	</div>
+
+	<div id="verdict"></div>
+	<ul id="checks"></ul>
+	<div id="outputBlock" hidden>
+		<div class="file">Output: <code>System.debug</code> lines and exception details from your code</div>
+		<pre id="output" aria-live="polite"></pre>
+	</div>
+
+	<details id="runtimeLog" open>
+		<summary>Runtime log (<span id="runtimeLogCount">0</span> lines)</summary>
+		<button id="clearLogBtn" type="button">Clear</button>
+		<label class="muted"><input type="checkbox" id="showMemoryLines"> Show memory allocator lines</label>
+		<pre id="runtimeLogText"></pre>
+	</details>
+
+	<footer>Powered by <a href="https://aertest.com">aer</a>. The runtime (about 54 MB) is downloaded on the first visit and then loaded from the browser's cache. It runs in a Web Worker.</footer>
+</main>
+
+<script>
+(function () {
+	'use strict';
+
+	// The aer-dist release this page runs. Pin a release and update it
+	// deliberately, after checking every exercise against the new runtime.
+	var AER_VERSION = 'v1.6.18';
+
+	// Where this page serves its copy of the worker, relative to the page.
+	// Browsers only start workers from scripts on the page's own origin.
+	var WORKER_URL = 'aer-worker.js';
+
+	// Each exercise gets its own directory in the worker's virtual file
+	// system, so files from one exercise never compile into another.
+	var ROOT = '/workspace/exercises';
+
+	// Each exercise shows one way to check a learner's solution:
+	// kind 'anonymous': the learner's code and the checks run as one block of
+	//   anonymous Apex through aerExec, checks last.
+	// kind 'tests': the learner writes a test class for a class the exercise
+	//   provides. aerRunTests runs it twice: against the provided class, where
+	//   every test must pass, then against a broken copy of it, where at least
+	//   one test must fail.
+	// kind 'source': the learner's file (here a trigger) is written into the
+	//   exercise's source directory and the checks run as anonymous Apex
+	//   against it through aerExec.
+	var EXERCISES = [
+		{
+			id: 'three-accounts',
+			title: '1. Anonymous Apex',
+			task: '<p>Insert three Account records named <code>Acme 1</code>, <code>Acme 2</code>, and <code>Acme 3</code>. Use a single <code>insert</code> statement.</p>',
+			kind: 'anonymous',
+			starter: [
+				'List<Account> accounts = new List<Account>();',
+				'// Add three Accounts to the list, then insert them.',
+				''
+			].join('\n'),
+			solution: [
+				'List<Account> accounts = new List<Account>();',
+				'for (Integer i = 1; i <= 3; i++) {',
+				'\taccounts.add(new Account(Name = \'Acme \' + i));',
+				'}',
+				'insert accounts;',
+				'System.debug(accounts.size() + \' Accounts inserted\');'
+			].join('\n'),
+			checks: [
+				'List<Account> aerCheckAccounts = [SELECT Name FROM Account ORDER BY Name];',
+				'Assert.areEqual(3, aerCheckAccounts.size(), \'Insert exactly three Accounts\');',
+				'Assert.areEqual(\'Acme 1\', aerCheckAccounts[0].Name, \'The first Account should be named Acme 1\');',
+				'Assert.areEqual(\'Acme 2\', aerCheckAccounts[1].Name, \'The second Account should be named Acme 2\');',
+				'Assert.areEqual(\'Acme 3\', aerCheckAccounts[2].Name, \'The third Account should be named Acme 3\');',
+				'Assert.areEqual(1, Limits.getDmlStatements(), \'Use a single insert statement\');'
+			].join('\n')
+		},
+		{
+			id: 'discount-tests',
+			title: '2. Write tests',
+			task: '<p>Write tests for <code>Discount.apply</code>, shown below, in the test class <code>DiscountTest</code>. Your tests must pass against this class. The checks then run them against a broken copy of <code>Discount.apply</code>, and at least one of your tests must fail there.</p>',
+			kind: 'tests',
+			file: 'classes/DiscountTest.cls',
+			provided: {
+				file: 'classes/Discount.cls',
+				content: [
+					'public class Discount {',
+					'\tpublic static Decimal apply(Decimal amount, Integer percent) {',
+					'\t\tif (percent < 0 || percent > 100) {',
+					'\t\t\tthrow new IllegalArgumentException(\'percent must be between 0 and 100\');',
+					'\t\t}',
+					'\t\treturn amount - amount * percent / 100;',
+					'\t}',
+					'}'
+				].join('\n'),
+				// The copy the learner's tests must catch: it returns the
+				// discount instead of the discounted amount.
+				broken: [
+					'public class Discount {',
+					'\tpublic static Decimal apply(Decimal amount, Integer percent) {',
+					'\t\tif (percent < 0 || percent > 100) {',
+					'\t\t\tthrow new IllegalArgumentException(\'percent must be between 0 and 100\');',
+					'\t\t}',
+					'\t\treturn amount * percent / 100;',
+					'\t}',
+					'}'
+				].join('\n'),
+				brokenDescription: 'returns the discount instead of the discounted amount'
+			},
+			starter: [
+				'@IsTest',
+				'private class DiscountTest {',
+				'\t@IsTest',
+				'\tstatic void applies_the_percentage() {',
+				'\t\t// Call Discount.apply and check the result with Assert.areEqual.',
+				'\t}',
+				'}'
+			].join('\n'),
+			solution: [
+				'@IsTest',
+				'private class DiscountTest {',
+				'\t@IsTest',
+				'\tstatic void applies_the_percentage() {',
+				'\t\tAssert.areEqual(90, Discount.apply(100, 10), \'apply(100, 10)\');',
+				'\t\tAssert.areEqual(37.5, Discount.apply(50, 25), \'apply(50, 25)\');',
+				'\t}',
+				'',
+				'\t@IsTest',
+				'\tstatic void rejects_a_percentage_over_100() {',
+				'\t\ttry {',
+				'\t\t\tDiscount.apply(100, 101);',
+				'\t\t\tAssert.fail(\'Expected an IllegalArgumentException\');',
+				'\t\t} catch (IllegalArgumentException e) {',
+				'\t\t\tAssert.isTrue(e.getMessage().contains(\'between 0 and 100\'));',
+				'\t\t}',
+				'\t}',
+				'}'
+			].join('\n')
+		},
+		{
+			id: 'account-trigger',
+			title: '3. Trigger on Account',
+			task: '<p>Write a <code>before insert</code> trigger on Account that sets <code>Description</code> to <code>New customer</code> when it is blank. Leave a Description that is already set unchanged. The trigger must handle 200 records in one insert.</p>',
+			kind: 'source',
+			file: 'triggers/AccountTrigger.trigger',
+			starter: [
+				'trigger AccountTrigger on Account (before insert) {',
+				'\tfor (Account a : Trigger.new) {',
+				'\t\t// Set the Description here.',
+				'\t}',
+				'}'
+			].join('\n'),
+			solution: [
+				'trigger AccountTrigger on Account (before insert) {',
+				'\tfor (Account a : Trigger.new) {',
+				'\t\tif (String.isBlank(a.Description)) {',
+				'\t\t\ta.Description = \'New customer\';',
+				'\t\t}',
+				'\t}',
+				'}'
+			].join('\n'),
+			checks: [
+				'Account aerCheckBlank = new Account(Name = \'Blank\');',
+				'Account aerCheckSet = new Account(Name = \'Set\', Description = \'Partner\');',
+				'insert new List<Account>{ aerCheckBlank, aerCheckSet };',
+				'Map<Id, Account> aerCheckById = new Map<Id, Account>([SELECT Description FROM Account]);',
+				'Assert.areEqual(\'New customer\', aerCheckById.get(aerCheckBlank.Id).Description, \'A blank Description should become New customer\');',
+				'Assert.areEqual(\'Partner\', aerCheckById.get(aerCheckSet.Id).Description, \'An existing Description should not change\');',
+				'List<Account> aerCheckBulk = new List<Account>();',
+				'for (Integer i = 0; i < 200; i++) {',
+				'\taerCheckBulk.add(new Account(Name = \'Bulk \' + i));',
+				'}',
+				'insert aerCheckBulk;',
+				'for (Account aerCheckAccount : [SELECT Description FROM Account WHERE Id IN :aerCheckBulk]) {',
+				'\tAssert.areEqual(\'New customer\', aerCheckAccount.Description, \'All 200 Accounts in one insert should get the default Description\');',
+				'}'
+			].join('\n')
+		}
+	];
+
+	// ?version=v1.6.18 loads another aer-dist release; ?wasmZip=/x.zip
+	// loads a same-origin zip, for trying an unreleased runtime.
+	function runtimeZipUrl(search) {
+		var zip = /[?&]wasmZip=([^&]+)/.exec(String(search || ''));
+		if (zip) {
+			return decodeURIComponent(zip[1]);
+		}
+		var v = /[?&]version=(v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?:&|$)/.exec(String(search || ''));
+		var version = v ? v[1] : AER_VERSION;
+		return 'https://aer-web.octoberswimmer.com/releases/download/' + version + '/aer_web_wasm_' + version + '.zip';
+	}
+
+	function sourceDir(exercise) {
+		return ROOT + '/' + exercise.id + '/force-app';
+	}
+
+	function filePath(exercise, relative) {
+		return sourceDir(exercise) + '/main/default/' + relative;
+	}
+
+	// Builds the worker messages that check the learner's code, in the order
+	// they run. The page assigns each message its id.
+	function buildSteps(exercise, code, options) {
+		var opts = options || {};
+		var base = {
+			timezone: opts.timezone || 'UTC',
+			allExceptions: !!opts.allExceptions
+		};
+		if (exercise.kind === 'anonymous') {
+			return [{
+				type: 'run',
+				request: assign(base, {
+					code: code + '\n' + exercise.checks,
+					enforceGovernorLimits: true
+				})
+			}];
+		}
+		if (exercise.kind === 'source') {
+			return [{
+				type: 'run',
+				files: [{ path: filePath(exercise, exercise.file), content: code }],
+				request: assign(base, {
+					code: exercise.checks,
+					sourcePaths: [sourceDir(exercise)],
+					enforceGovernorLimits: true
+				})
+			}];
+		}
+		var testRequest = assign(base, {
+			sourcePaths: [sourceDir(exercise)],
+			// Prints System.debug output from the test methods. Releases
+			// up to v1.6.18 ignore it.
+			verbose: true
+		});
+		return [
+			{
+				type: 'test',
+				files: [
+					{ path: filePath(exercise, exercise.provided.file), content: exercise.provided.content },
+					{ path: filePath(exercise, exercise.file), content: code }
+				],
+				request: testRequest
+			},
+			{
+				type: 'test',
+				files: [{ path: filePath(exercise, exercise.provided.file), content: exercise.provided.broken }],
+				request: testRequest
+			}
+		];
+	}
+
+	function assign(target, extra) {
+		var out = {};
+		Object.keys(target).forEach(function (k) { out[k] = target[k]; });
+		Object.keys(extra).forEach(function (k) { out[k] = extra[k]; });
+		return out;
+	}
+
+	// Turns an aerExec response into a verdict. learnerLines is the number
+	// of lines the learner wrote when the checks were appended to them
+	// (kind 'anonymous'), or 0 when the checks ran on their own.
+	function judgeExec(response, learnerLines) {
+		var r = response || {};
+		if (r.error) {
+			return { passed: false, kind: 'error', message: r.error };
+		}
+		if (!r.compiled) {
+			return { passed: false, kind: 'compile', message: 'Your code does not compile: ' + (r.compileProblem || 'unknown problem') };
+		}
+		if (r.success) {
+			return { passed: true, kind: 'pass', message: 'All checks passed.' };
+		}
+		var msg = r.exceptionMessage || 'execution failed';
+		var isAssert = msg.indexOf('System.AssertException') === 0;
+		var inChecks = learnerLines === 0 || r.line > learnerLines;
+		if (isAssert && inChecks) {
+			return { passed: false, kind: 'check', message: msg.replace(/^System\.AssertException: Assertion Failed: /, '') };
+		}
+		return { passed: false, kind: 'exception', message: 'Your code threw an exception: ' + msg, detail: r.exceptionStackTrace || '' };
+	}
+
+	// Turns an aerRunTests response into a verdict and one row per test.
+	function judgeTests(response) {
+		var r = response || {};
+		var tests = (r.tests || []).map(function (t) {
+			return {
+				name: t.methodName,
+				passed: !!t.passed,
+				message: t.passed ? '' : String(t.errorMessage || '').split('\n')[0]
+			};
+		});
+		if (!r.total) {
+			// A compile error ends with hints for the aer command line,
+			// which do not apply here.
+			var problem = r.error ? String(r.error).split('\n\nTip:')[0] : 'No test methods ran.';
+			return { passed: false, kind: 'error', message: 'The tests could not run: ' + problem, tests: tests };
+		}
+		if (r.failed > 0) {
+			return { passed: false, kind: 'check', message: r.failed + ' of ' + r.total + ' tests failed.', tests: tests };
+		}
+		return { passed: true, kind: 'pass', message: 'All ' + r.total + ' tests passed.', tests: tests };
+	}
+
+	// Judges the response to step number step of buildSteps. previous is the
+	// verdict of the step before it. Returns { done, verdict }; when done is
+	// false the page runs the next step.
+	function judgeStep(exercise, step, response, learnerLines, previous) {
+		if (exercise.kind === 'anonymous') {
+			return { done: true, verdict: judgeExec(response, learnerLines) };
+		}
+		if (exercise.kind === 'source') {
+			return { done: true, verdict: judgeExec(response, 0) };
+		}
+		var className = exercise.provided.file.replace(/^.*\//, '').replace(/\.cls$/, '');
+		var v = judgeTests(response);
+		if (step === 0) {
+			if (!v.passed && v.kind === 'check') {
+				v.message = 'Your tests must pass against the ' + className + ' class shown above. ' + v.message;
+			}
+			return { done: !v.passed, verdict: v };
+		}
+		if (v.kind === 'error') {
+			return { done: true, verdict: v };
+		}
+		if (v.passed) {
+			return { done: true, verdict: {
+				passed: false,
+				kind: 'check',
+				message: 'Your tests also pass against a broken copy of ' + className + ' that ' + exercise.provided.brokenDescription + '. Add an assertion that this copy fails.',
+				tests: previous.tests
+			} };
+		}
+		return { done: true, verdict: {
+			passed: true,
+			kind: 'pass',
+			message: 'Your tests pass against ' + className + ' and catch the broken copy that ' + exercise.provided.brokenDescription + '.',
+			tests: previous.tests
+		} };
+	}
+
+	// Lines the runtime prints about itself, and test-runner summary lines
+	// that repeat what the checks list shows.
+	function isRuntimeNoise(line) {
+		return isMemoryAllocatorLine(line) ||
+			/^Apex parse cache:/.test(line) ||
+			/^aer: building test databases on disk/.test(line) ||
+			/^Ran \d+ tests?:/.test(line) ||
+			/^FAIL \w+\.\w+: /.test(line) ||
+			line === '';
+	}
+
+	// The wasm build's memory allocator (github.com/octoberswimmer/memory)
+	// prints every mapping of 1 MiB or more to stderr, with no setting to turn
+	// that off. The lines describe the runtime's memory, not the learner's
+	// code.
+	function isMemoryAllocatorLine(line) {
+		return /^\[memory\/wasm\]/.test(line);
+	}
+
+	// Describes the worker's report of the OPFS mount.
+	function describeOpfs(opfs) {
+		if (opfs && opfs.mounted) {
+			return '/tmp is on the origin private file system (' + opfs.handles + ' file handles); the runtime builds its databases there';
+		}
+		return 'OPFS is not available (' + ((opfs && opfs.reason) || 'no status reported') + '); the runtime keeps its databases in memory';
+	}
+
+	// Prefixes a runtime log line with the seconds since the page loaded.
+	function formatLogLine(ms, text) {
+		var secs = (ms / 1000).toFixed(1);
+		while (secs.length < 6) {
+			secs = ' ' + secs;
+		}
+		return secs + ' s  ' + text;
+	}
+
+	if (typeof window !== 'undefined') {
+		window.__exampleTest = {
+			EXERCISES: EXERCISES,
+			AER_VERSION: AER_VERSION,
+			runtimeZipUrl: runtimeZipUrl,
+			buildSteps: buildSteps,
+			judgeExec: judgeExec,
+			judgeTests: judgeTests,
+			judgeStep: judgeStep,
+			isRuntimeNoise: isRuntimeNoise,
+			isMemoryAllocatorLine: isMemoryAllocatorLine,
+			describeOpfs: describeOpfs,
+			formatLogLine: formatLogLine
+		};
+	}
+
+	// Everything below needs a real browser.
+	if (typeof Worker !== 'function' || typeof document === 'undefined') {
+		return;
+	}
+
+	var tabs = document.getElementById('exerciseTabs');
+	var titleEl = document.getElementById('exerciseTitle');
+	var taskEl = document.getElementById('exerciseTask');
+	var providedEl = document.getElementById('exerciseProvided');
+	var providedFileEl = document.getElementById('exerciseProvidedFile');
+	var providedSourceEl = document.getElementById('exerciseProvidedSource');
+	var fileEl = document.getElementById('exerciseFile');
+	var codeInput = document.getElementById('codeInput');
+	var runBtn = document.getElementById('runBtn');
+	var resetBtn = document.getElementById('resetBtn');
+	var allExceptions = document.getElementById('allExceptions');
+	var statusEl = document.getElementById('status');
+	var verdictEl = document.getElementById('verdict');
+	var checksEl = document.getElementById('checks');
+	var output = document.getElementById('output');
+	var outputBlock = document.getElementById('outputBlock');
+	var logCountEl = document.getElementById('runtimeLogCount');
+	var logTextEl = document.getElementById('runtimeLogText');
+	var clearLogBtn = document.getElementById('clearLogBtn');
+	var showMemoryLines = document.getElementById('showMemoryLines');
+
+	// The runtime log keeps the startup stages, every run, and every line
+	// the runtime prints, unfiltered.
+	var LOG_CAP = 5000;
+	var logLines = [];
+	var logFlushPending = false;
+	var pageStart = Date.now();
+
+	// The status line beside Run. Until the learner's first run starts, and
+	// while a learner's run waits for a warm-up, it shows the latest runtime
+	// log entry, with the seconds a warm-up has been running.
+	// statusMode is 'startup' until the learner's first run, 'waiting' while
+	// a learner's run waits for a warm-up, 'run' during a learner's run, and
+	// 'idle' after it.
+	var statusMode = 'startup';
+	var statusText = '';
+
+	function setStatus(text) {
+		statusText = text;
+		renderStatus();
+	}
+
+	function renderStatus() {
+		var text = statusText;
+		var following = statusMode === 'startup' || statusMode === 'waiting';
+		if (following && activeRun && activeRun.warmup) {
+			text += ' (' + Math.round((Date.now() - activeRun.startedAt) / 1000) + ' s)';
+		}
+		if (statusMode === 'waiting') {
+			text = 'Your run starts when the warm-up finishes. ' + text;
+		}
+		statusEl.textContent = text;
+	}
+
+	setInterval(renderStatus, 1000);
+
+	function log(text) {
+		var memory = isMemoryAllocatorLine(text);
+		if ((statusMode === 'startup' || statusMode === 'waiting') && !memory) {
+			setStatus(text);
+		}
+		// Every line is kept, so the checkbox can show allocator lines
+		// received before it was ticked.
+		logLines.push({ text: formatLogLine(Date.now() - pageStart, text), memory: memory });
+		if (logLines.length > LOG_CAP) {
+			logLines = logLines.slice(logLines.length - LOG_CAP);
+		}
+		scheduleLogRender();
+	}
+
+	// Download progress and test output arrive many times a second; redraw
+	// at most once per frame.
+	function scheduleLogRender() {
+		if (logFlushPending) {
+			return;
+		}
+		logFlushPending = true;
+		requestAnimationFrame(function () {
+			logFlushPending = false;
+			var shown = logLines.filter(function (l) { return showMemoryLines.checked || !l.memory; });
+			var atBottom = logTextEl.scrollTop + logTextEl.clientHeight >= logTextEl.scrollHeight - 4;
+			logTextEl.textContent = shown.map(function (l) { return l.text; }).join('\n');
+			logCountEl.textContent = String(shown.length);
+			if (atBottom) {
+				logTextEl.scrollTop = logTextEl.scrollHeight;
+			}
+		});
+	}
+
+	showMemoryLines.addEventListener('change', scheduleLogRender);
+
+	clearLogBtn.addEventListener('click', function () {
+		logLines = [];
+		scheduleLogRender();
+	});
+
+	// The last progress message of the current startup stage, logged when
+	// the stage ends so the download size appears once, not per chunk.
+	var progressStage = '';
+	var progressDetail = '';
+	var progressStartedAt = 0;
+
+	var timezone = 'UTC';
+	try {
+		timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+	} catch (_e) {
+		// Keep UTC.
+	}
+
+	var current = EXERCISES[0];
+	var nextId = 0;
+	// The run in progress: the learner's or the warm-up.
+	var activeRun = null;
+	// A Run click that arrived while a warm-up was running.
+	var pendingRun = null;
+	// The first anonymous run builds the in-memory org, and the first test
+	// run builds the test runner's copy of it; each takes several seconds.
+	// The page runs both in the background after the runtime loads, so the
+	// learner's runs wait less or not at all. Each warm-up runs one step of an
+	// exercise's own solution.
+	var warmups = [];
+
+	function draftKey(exercise) {
+		return 'aer-example-draft-' + exercise.id;
+	}
+
+	function loadDraft(exercise) {
+		try {
+			return window.localStorage.getItem(draftKey(exercise));
+		} catch (_e) {
+			return null;
+		}
+	}
+
+	function saveDraft() {
+		try {
+			window.localStorage.setItem(draftKey(current), codeInput.value);
+		} catch (_e) {
+			// Drafts are a convenience; ignore storage failures.
+		}
+	}
+
+	function showExercise(exercise) {
+		current = exercise;
+		Array.prototype.forEach.call(tabs.children, function (b) {
+			b.setAttribute('aria-selected', b.getAttribute('data-id') === exercise.id ? 'true' : 'false');
+		});
+		titleEl.textContent = exercise.title;
+		taskEl.innerHTML = exercise.task;
+		providedEl.hidden = !exercise.provided;
+		if (exercise.provided) {
+			providedFileEl.textContent = exercise.provided.file.replace(/^.*\//, '');
+			providedSourceEl.textContent = exercise.provided.content;
+		}
+		fileEl.textContent = exercise.file ? exercise.file.replace(/^.*\//, '') : 'Anonymous Apex';
+		var draft = loadDraft(exercise);
+		codeInput.value = draft !== null ? draft : exercise.starter;
+		clearResults();
+	}
+
+	function clearResults() {
+		verdictEl.textContent = '';
+		verdictEl.className = '';
+		checksEl.innerHTML = '';
+		output.textContent = '';
+		outputBlock.hidden = true;
+	}
+
+	// The output block stays hidden until there is something to show.
+	function appendOutput(line) {
+		output.textContent += line + '\n';
+		outputBlock.hidden = false;
+	}
+
+	function showVerdict(v) {
+		verdictEl.textContent = (v.passed ? 'PASS: ' : 'FAIL: ') + v.message;
+		verdictEl.className = v.passed ? 'pass' : 'fail';
+		(v.tests || []).forEach(function (t) {
+			var li = document.createElement('li');
+			var tag = document.createElement('span');
+			tag.className = t.passed ? 'pass' : 'fail';
+			tag.textContent = t.passed ? 'PASS ' : 'FAIL ';
+			li.appendChild(tag);
+			li.appendChild(document.createTextNode(t.name.replace(/_/g, ' ') + (t.message ? ': ' + t.message : '')));
+			checksEl.appendChild(li);
+		});
+		if (v.detail) {
+			appendOutput(v.detail);
+		}
+	}
+
+	function setBusy(busy) {
+		resetBtn.disabled = busy;
+		Array.prototype.forEach.call(tabs.children, function (b) {
+			b.disabled = busy;
+		});
+	}
+
+	EXERCISES.forEach(function (exercise) {
+		var b = document.createElement('button');
+		b.type = 'button';
+		b.setAttribute('role', 'tab');
+		b.setAttribute('data-id', exercise.id);
+		b.textContent = exercise.title;
+		b.addEventListener('click', function () {
+			showExercise(exercise);
+		});
+		tabs.appendChild(b);
+	});
+
+	codeInput.addEventListener('input', saveDraft);
+	codeInput.addEventListener('keydown', function (e) {
+		if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+			e.preventDefault();
+			var s = codeInput.selectionStart;
+			codeInput.setRangeText('\t', s, codeInput.selectionEnd, 'end');
+			saveDraft();
+		}
+	});
+	resetBtn.addEventListener('click', function () {
+		codeInput.value = current.starter;
+		saveDraft();
+		clearResults();
+	});
+
+	var zipUrl = runtimeZipUrl(location.search);
+	var worker = new Worker(WORKER_URL);
+	log('Starting the worker; runtime ' + zipUrl);
+	worker.postMessage({ type: 'init', zipUrl: zipUrl, cwd: ROOT });
+
+	function sendStep(run) {
+		var message = run.steps[run.step];
+		message.id = ++nextId;
+		run.id = message.id;
+		worker.postMessage(message);
+	}
+
+	// Starts checking code against exercise. A warm-up runs only the first
+	// step and shows nothing.
+	function start(exercise, code, warmup) {
+		var steps = buildSteps(exercise, code, { timezone: timezone, allExceptions: allExceptions.checked });
+		activeRun = {
+			exercise: exercise,
+			warmup: !!warmup,
+			steps: warmup ? steps.slice(0, 1) : steps,
+			step: 0,
+			previous: null,
+			learnerLines: exercise.kind === 'anonymous' ? code.split('\n').length : 0,
+			startedAt: Date.now()
+		};
+		if (!warmup) {
+			runBtn.disabled = true;
+			setBusy(true);
+			clearResults();
+			statusMode = 'run';
+			setStatus('Running…');
+			log('Run: ' + exercise.title);
+		} else {
+			log('Warm-up: ' + (exercise.kind === 'tests' ? 'a test run, which prepares the test runner' : 'an anonymous Apex run, which builds the in-memory org'));
+		}
+		sendStep(activeRun);
+	}
+
+	function stepDone(response) {
+		var run = activeRun;
+		var judged = judgeStep(run.exercise, run.step, response, run.learnerLines, run.previous);
+		if (!judged.done && run.step + 1 < run.steps.length) {
+			run.previous = judged.verdict;
+			run.step++;
+			sendStep(run);
+			return;
+		}
+		activeRun = null;
+		var took = ((Date.now() - run.startedAt) / 1000).toFixed(1) + ' s';
+		if (run.warmup) {
+			log('Warm-up finished in ' + took);
+		} else {
+			runBtn.disabled = false;
+			setBusy(false);
+			statusMode = 'idle';
+			setStatus('Finished in ' + took + '.');
+			showVerdict(judged.verdict);
+			log((judged.verdict.passed ? 'PASS' : 'FAIL') + ' in ' + took + ': ' + judged.verdict.message);
+		}
+		startNext();
+	}
+
+	// Runs the learner's queued run, else the next warm-up, when the runtime
+	// is idle.
+	function startNext() {
+		if (activeRun) {
+			return;
+		}
+		if (pendingRun) {
+			var p = pendingRun;
+			pendingRun = null;
+			start(p.exercise, p.code, false);
+			return;
+		}
+		var w = warmups.shift();
+		if (w) {
+			start(w, w.solution, true);
+			return;
+		}
+		if (statusMode === 'startup') {
+			setStatus('Ready. The runtime and the test runner are prepared.');
+		}
+	}
+
+	runBtn.addEventListener('click', function () {
+		if (activeRun && activeRun.warmup) {
+			// The runtime runs one request at a time; this run starts as
+			// soon as the warm-up finishes.
+			pendingRun = { exercise: current, code: codeInput.value };
+			runBtn.disabled = true;
+			setBusy(true);
+			clearResults();
+			statusMode = 'waiting';
+			log('Run requested: ' + current.title + '; it starts when the warm-up finishes');
+			// Keep showing what the warm-up is doing.
+			setStatus(activeRun.exercise.kind === 'tests' ? 'Warm-up: a test run, which prepares the test runner' : 'Warm-up: an anonymous Apex run, which builds the in-memory org');
+			return;
+		}
+		if (!activeRun) {
+			start(current, codeInput.value, false);
+		}
+	});
+
+	worker.onmessage = function (event) {
+		var m = event.data || {};
+		var mine = activeRun && m.id === activeRun.id;
+		// The learner's tests are expected to fail against the broken copy,
+		// so the output of that step is not shown.
+		var showing = activeRun && !activeRun.warmup && !(activeRun.exercise.kind === 'tests' && activeRun.step > 0);
+		if (m.type === 'progress') {
+			setStatus(m.detail || m.stage);
+			if (m.stage !== progressStage) {
+				if (progressStage === 'download') {
+					// A short time means the browser's HTTP cache had it.
+					var size = /(\d+) MB$/.exec(progressDetail || '');
+					log('Fetched the aer runtime' + (size ? ': ' + size[1] + ' MB' : '') + ' in ' + ((Date.now() - progressStartedAt) / 1000).toFixed(1) + ' s');
+				}
+				log(m.detail || m.stage);
+				progressStage = m.stage;
+				progressStartedAt = Date.now();
+			}
+			progressDetail = m.detail;
+		} else if (m.type === 'ready') {
+			runBtn.disabled = false;
+			log('aer ' + m.version + ' is ready');
+			log(describeOpfs(m.opfs));
+			warmups = [
+				EXERCISES.filter(function (e) { return e.kind === 'anonymous'; })[0],
+				EXERCISES.filter(function (e) { return e.kind === 'tests'; })[0]
+			];
+			startNext();
+		} else if (m.type === 'error') {
+			appendOutput(m.message);
+			log('The runtime failed to load: ' + m.message);
+			statusMode = 'idle';
+			setStatus('The runtime failed to load.');
+		} else if (m.type === 'stdout') {
+			if (m.line !== '') {
+				log(m.line);
+			}
+			// Test runs print System.debug output and caught exceptions
+			// here; anonymous runs print caught exceptions here.
+			if (showing && !isRuntimeNoise(m.line)) {
+				appendOutput(m.line);
+			}
+		} else if (m.type === 'debug' && mine && showing) {
+			appendOutput(m.line);
+		} else if ((m.type === 'result' || m.type === 'test-done') && mine) {
+			stepDone(m.response);
+		}
+	};
+
+	showExercise(EXERCISES[0]);
+})();
+</script>
+</body>
+</html>

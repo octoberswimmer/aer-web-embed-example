@@ -1,0 +1,10 @@
+{
+	"name": "aer-web-embed-example",
+	"version": "1.0.0",
+	"description": "Sample page that embeds the aer js/wasm runtime to check Apex exercises in the browser",
+	"private": true,
+	"scripts": {
+		"test": "node --test",
+		"start": "python3 -m http.server 8000 --bind 127.0.0.1"
+	}
+}
