@@ -58,12 +58,12 @@ test('wires up the hooks the script expects', () => {
 
 test('starts its own worker and pins the latest stable release', () => {
 	assert.ok(html.includes("var WORKER_URL = 'aer-worker.js';"), 'page should start the worker served next to it');
-	assert.ok(html.includes("var AER_VERSION = 'v1.6.18';"), 'page should pin aer v1.6.18');
+	assert.ok(html.includes("var AER_VERSION = 'v1.6.19';"), 'page should pin aer v1.6.19');
 	const { runtimeZipUrl } = loadHelpers();
 	const url = (v) => `https://aer-web.octoberswimmer.com/releases/download/${v}/aer_web_wasm_${v}.zip`;
-	assert.equal(runtimeZipUrl(''), url('v1.6.18'));
+	assert.equal(runtimeZipUrl(''), url('v1.6.19'));
 	assert.equal(runtimeZipUrl('?version=v1.7.5'), url('v1.7.5'));
-	assert.equal(runtimeZipUrl('?version=..%2Fevil'), url('v1.6.18'), 'anything but a release tag falls back to the pin');
+	assert.equal(runtimeZipUrl('?version=..%2Fevil'), url('v1.6.19'), 'anything but a release tag falls back to the pin');
 	assert.equal(runtimeZipUrl('?wasmZip=%2Flocal.zip'), '/local.zip', 'a same-origin zip wins');
 });
 
@@ -192,7 +192,7 @@ test('describes the OPFS mount and stamps runtime log lines', () => {
 	assert.match(describeOpfs({ mounted: true, path: '/tmp', handles: 64 }), /^\/tmp is on the origin private file system \(64 file handles\)/);
 	assert.match(describeOpfs({ mounted: false, reason: 'navigator.storage.getDirectory is not available' }), /not available \(navigator\.storage\.getDirectory is not available\); the runtime keeps its databases in memory/);
 	assert.match(describeOpfs(undefined), /no status reported/);
-	assert.equal(formatLogLine(1234, 'aer v1.6.18 is ready'), '   1.2 s  aer v1.6.18 is ready');
+	assert.equal(formatLogLine(1234, 'aer v1.6.19 is ready'), '   1.2 s  aer v1.6.19 is ready');
 	assert.equal(formatLogLine(123456, 'x'), ' 123.5 s  x');
 });
 

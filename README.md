@@ -12,8 +12,13 @@ page, the request and response formats, and three ways to check a learner's solu
 anonymous Apex with appended assertions, classes and triggers with assertions, and test
 classes.
 
-Use the latest stable aer release, currently **v1.6.18**. Everything below was verified
-against v1.6.18 in Chrome and in Node on 2026-11-19.
+Use the latest stable aer release, currently **v1.6.19**. Everything below was verified
+against v1.6.19 in Chrome and in Node on 2026-11-19, except the measured times, which
+were taken with v1.6.18.
+
+v1.6.19 is the first release that accepts the `verbose` and `allExceptions` request
+fields described below. Earlier releases ignore them: tests print no `System.debug`
+output, and caught exceptions are not printed.
 
 ## The sample application
 
@@ -114,7 +119,7 @@ The OPFS code is a port of the mount in aer's VS Code web extension.
 | Item | Detail |
 | --- | --- |
 | Hosting | Static files only, over HTTPS (or from `localhost` during development). The worker script must be served from the same origin as the page, because browsers only start Web Workers from same-origin scripts. OPFS is only available in secure contexts; on plain HTTP the runtime falls back to memory. |
-| Download | 54 MB zip for v1.6.18, on the first visit. The release server sends `Access-Control-Allow-Origin: *`, `ETag`, and `Last-Modified`, and answers a request carrying the `ETag` with `304 Not Modified`. Later visits load the zip from the browser's HTTP cache: in Chrome the second load took 80 ms and sent no request. |
+| Download | 54 MB zip for v1.6.19, on the first visit. The release server sends `Access-Control-Allow-Origin: *`, `ETag`, and `Last-Modified`, and answers a request carrying the `ETag` with `304 Not Modified`. Later visits load the zip from the browser's HTTP cache: in Chrome the second load took 80 ms and sent no request. |
 | Memory | `aer.wasm` is 339 MB uncompressed. Desktop browsers handle it. Phones and tablets have not been tested. |
 | Browser features | WebAssembly, Web Workers, and `DecompressionStream('deflate-raw')`: Chrome and Edge 103+, Firefox 113+, Safari 16.4+. OPFS sync access handles are in the same versions. |
 | HTTP headers | None. The runtime does not use `SharedArrayBuffer`, so the page does not need `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`. |
@@ -153,7 +158,7 @@ The runtime zip URL has this form:
 https://aer-web.octoberswimmer.com/releases/download/<version>/aer_web_wasm_<version>.zip
 ```
 
-Use v1.6.18, the latest stable release. The list of releases is at
+Use v1.6.19, the latest stable release. The list of releases is at
 [github.com/octoberswimmer/aer-dist/releases](https://github.com/octoberswimmer/aer-dist/releases).
 Pin the version in your page rather than following the newest release, so that a new aer
 release cannot change how your exercises behave until you update the version and check
@@ -162,7 +167,7 @@ them.
 ## Step 3: Start the worker and run anonymous Apex
 
 ```js
-var AER_VERSION = 'v1.6.18';
+var AER_VERSION = 'v1.6.19';
 var ZIP_URL = 'https://aer-web.octoberswimmer.com/releases/download/' +
 	AER_VERSION + '/aer_web_wasm_' + AER_VERSION + '.zip';
 
@@ -215,7 +220,7 @@ worker.onmessage = function (event) {
 | `apiVersion` | string | API version the anonymous block and its inline classes declare, for example `"62.0"`. |
 | `heapLimit` | string | Maximum Apex heap size. |
 | `sandbox` | boolean | Report the org as a sandbox (`Organization.IsSandbox`). |
-| `allExceptions` | boolean | Print every caught exception, with the class, method, and line that caught it, as `stdout` lines. The same as `aer test --all-exceptions`. Releases after v1.6.18. |
+| `allExceptions` | boolean | Print every caught exception, with the class, method, and line that caught it, as `stdout` lines. The same as `aer test --all-exceptions`. Requires v1.6.19 or later. |
 
 ### Response fields
 
@@ -411,8 +416,8 @@ Test request fields:
 | `filters` | string[] | Run only these tests, for example `["DiscountTest.applies_the_percentage"]`. |
 | `timezone`, `locale`, `currency` | string | The running user's settings. |
 | `sandbox` | boolean | Report the org as a sandbox. |
-| `verbose` | boolean | Print `System.debug` output from the test methods as `stdout` lines. The same as `aer test --verbose`. Releases after v1.6.18; v1.6.18 ignores it and prints no debug output from tests. |
-| `allExceptions` | boolean | Print every caught exception as `stdout` lines. The same as `aer test --all-exceptions`. Releases after v1.6.18. |
+| `verbose` | boolean | Print `System.debug` output from the test methods as `stdout` lines. The same as `aer test --verbose`. Requires v1.6.19 or later; earlier releases ignore it and print no debug output from tests. |
+| `allExceptions` | boolean | Print every caught exception as `stdout` lines. The same as `aer test --all-exceptions`. Requires v1.6.19 or later. |
 
 - Treat `total: 0` as a failure. It means no test method ran, usually because the code
   does not compile; `error` then holds the compile error, followed by a `Tip:` paragraph
