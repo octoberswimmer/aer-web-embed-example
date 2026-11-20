@@ -114,7 +114,7 @@
 
 	// The aer-dist release this page runs. Pin a release and update it
 	// deliberately, after checking every exercise against the new runtime.
-	var AER_VERSION = 'v1.6.19';
+	var AER_VERSION = 'v1.6.20';
 
 	// Where this page serves its copy of the worker, relative to the page.
 	// Browsers only start workers from scripts on the page's own origin.
@@ -265,7 +265,7 @@
 		}
 	];
 
-	// ?version=v1.6.19 loads another aer-dist release; ?wasmZip=/x.zip
+	// ?version=v1.6.20 loads another aer-dist release; ?wasmZip=/x.zip
 	// loads a same-origin zip, for trying an unreleased runtime.
 	function runtimeZipUrl(search) {
 		var zip = /[?&]wasmZip=([^&]+)/.exec(String(search || ''));

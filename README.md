@@ -12,9 +12,8 @@ page, the request and response formats, and three ways to check a learner's solu
 anonymous Apex with appended assertions, classes and triggers with assertions, and test
 classes.
 
-Use the latest stable aer release, currently **v1.6.19**. Everything below was verified
-against v1.6.19 in Chrome and in Node on 2026-11-19, except the measured times, which
-were taken with v1.6.18.
+Use the latest stable aer release, currently **v1.6.20**. Everything below was verified
+against v1.6.20 in Chrome and in Node on 2026-11-19.
 
 v1.6.19 is the first release that accepts the `verbose` and `allExceptions` request
 fields described below. Earlier releases ignore them: tests print no `System.debug`
@@ -119,7 +118,7 @@ The OPFS code is a port of the mount in aer's VS Code web extension.
 | Item | Detail |
 | --- | --- |
 | Hosting | Static files only, over HTTPS (or from `localhost` during development). The worker script must be served from the same origin as the page, because browsers only start Web Workers from same-origin scripts. OPFS is only available in secure contexts; on plain HTTP the runtime falls back to memory. |
-| Download | 54 MB zip for v1.6.19, on the first visit. The release server sends `Access-Control-Allow-Origin: *`, `ETag`, and `Last-Modified`, and answers a request carrying the `ETag` with `304 Not Modified`. Later visits load the zip from the browser's HTTP cache: in Chrome the second load took 80 ms and sent no request. |
+| Download | 54 MB zip for v1.6.20, on the first visit. The release server sends `Access-Control-Allow-Origin: *`, `ETag`, and `Last-Modified`, and answers a request carrying the `ETag` with `304 Not Modified`. Later visits load the zip from the browser's HTTP cache: in Chrome the second load took 80 ms and sent no request. |
 | Memory | `aer.wasm` is 339 MB uncompressed. Desktop browsers handle it. Phones and tablets have not been tested. |
 | Browser features | WebAssembly, Web Workers, and `DecompressionStream('deflate-raw')`: Chrome and Edge 103+, Firefox 113+, Safari 16.4+. OPFS sync access handles are in the same versions. |
 | HTTP headers | None. The runtime does not use `SharedArrayBuffer`, so the page does not need `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy`. |
@@ -158,7 +157,7 @@ The runtime zip URL has this form:
 https://aer-web.octoberswimmer.com/releases/download/<version>/aer_web_wasm_<version>.zip
 ```
 
-Use v1.6.19, the latest stable release. The list of releases is at
+Use v1.6.20, the latest stable release. The list of releases is at
 [github.com/octoberswimmer/aer-dist/releases](https://github.com/octoberswimmer/aer-dist/releases).
 Pin the version in your page rather than following the newest release, so that a new aer
 release cannot change how your exercises behave until you update the version and check
@@ -167,7 +166,7 @@ them.
 ## Step 3: Start the worker and run anonymous Apex
 
 ```js
-var AER_VERSION = 'v1.6.19';
+var AER_VERSION = 'v1.6.20';
 var ZIP_URL = 'https://aer-web.octoberswimmer.com/releases/download/' +
 	AER_VERSION + '/aer_web_wasm_' + AER_VERSION + '.zip';
 
@@ -241,25 +240,33 @@ worker.onmessage = function (event) {
 - **One request at a time.** A second request sent while one is running gets
   `another anonymous Apex execution is in progress`. Disable the Run button until the
   result arrives.
-- **The first run takes longest**, because it builds the org template, and the first
-  test run builds the test runner's copy of it. The sample page enables Run as soon as
-  `ready` arrives and runs both warm-ups in the background, one step of an exercise's
-  own solution each. A Run click during a warm-up waits for it and then starts, so
-  the learner never waits longer than the remaining warm-up time.
+- **The first run takes longest**, because it builds the org template. Anonymous runs
+  and test runs use the same template from v1.6.20 on; earlier releases built a
+  second one for the first test run. The sample page
+  enables Run as soon as `ready` arrives and runs both warm-ups in the background,
+  one step of an exercise's own solution each. A Run click during a warm-up waits for
+  it and then starts, so the learner never waits longer than the remaining warm-up
+  time.
 - **Queueables and other async Apex** run after the anonymous block commits, within the
   same request.
 
-Measured times for v1.6.18 in headless Chrome 157 on a Linux desktop, running the sample
+Measured times for v1.6.20 in headless Chrome 157 on a Linux desktop, running the sample
 page with the zip served from the same machine (on a first visit, add the time to
 download 54 MB over the visitor's connection):
 
 | Step | First visit | Later visit |
 | --- | --- | --- |
-| Page load until Run is enabled (unpack and start the runtime) | 5.5 s | 2.1 s |
-| Run clicked as soon as it is enabled (waits for the anonymous warm-up) | 18 s | 10 s |
-| Anonymous Apex run after the warm-up (exercises 1 and 3) | 1.2 to 1.8 s | |
-| Test-writing check after both warm-ups (exercise 2: two test runs) | 4.3 s | |
-| Test run without the test-runner warm-up | 11 s | |
+| Page load until Run is enabled (unpack and start the runtime) | 2.0 s | 1.9 s |
+| Anonymous warm-up (builds the org template) | 9.8 to 10.0 s | 4.2 s |
+| Test-runner warm-up, after the anonymous warm-up | 1.9 to 2.1 s | 2.1 s |
+| Run clicked as soon as it is enabled, until the result (waits for the anonymous warm-up) | 13.5 s | 7.8 s |
+| Anonymous Apex run after the warm-up (exercises 1 and 3) | 1.4 to 1.6 s | 1.3 to 1.7 s |
+| Test-writing check after both warm-ups (exercise 2: two test runs) | 4.1 s | 3.9 s |
+| Test-writing check after only the anonymous warm-up | 4.4 s | |
+
+With v1.6.18 the same page took 18 s on a first visit and 10 s on a later visit from
+page load to the result of a Run clicked as soon as it was enabled, and a test run
+without the test-runner warm-up took 11 s.
 
 A later visit starts faster because the zip comes from the HTTP cache and part of
 aer's cache comes from IndexedDB. The worker saves `/cache` to IndexedDB in the
